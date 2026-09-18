@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>焼け付くほど強くなる基板デッキ</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --dim: #8b949e;
+    --current: #58a6ff;
+    --voltage: #bc8cff;
+    --heat: #ff7b72;
+    --good: #3fb950;
+    --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+    margin: 0;
+    padding: 16px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 18px; color: var(--dim); text-align: center; margin: 8px 0 16px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .bar-wrap {
+    background: #21262d;
+    border-radius: 4px;
+    height: 18px;
+    flex: 1;
+    min-width: 120px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border);
+  }
+  .bar-fill { height: 100%; transition: width 0.3s; }
+  .bar-fill.hp-player { background: var(--good); }
+  .bar-fill.hp-enemy { background: var(--bad); }
+  .bar-label {
+    position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; text-shadow: 0 0 3px #000;
+  }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: bold;
+    border: 1px solid var(--border);
+  }
+  .tag.current { color: var(--current); border-color: var(--current); }
+  .tag.voltage { color: var(--voltage); border-color: var(--voltage); }
+  .tag.heat { color: var(--heat); border-color: var(--heat); }
+  .tag.resist { background: #21262d; }
+  .tag.weak { background: #21262d; }
+  .enemy-profile { display: flex; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--dim); }
+  .intent {
+    background: #21262d;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  #hand {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    min-height: 150px;
+    padding: 8px 0;
+  }
+  .card {
+    background: #1c2128;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    width: 128px;
+    min-height: 150px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+    position: relative;
+  }
+  .card:hover:not(.disabled) { transform: translateY(-6px); border-color: var(--dim); }
+  .card.disabled { opacity: 0.4; cursor: not-allowed; }
+  .card.attack.current { border-color: var(--current); }
+  .card.attack.voltage { border-color: var(--voltage); }
+  .card.attack.heat { border-color: var(--heat); }
+  .card .cost {
+    position: absolute; top: -8px; left: -8px;
+    background: #30363d; border-radius: 50%;
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 13px;
+    border: 1px solid var(--border);
+  }
+  .card .name { font-weight: bold; font-size: 13px; margin: 6px 0 4px; }
+  .card .desc { font-size: 11px; color: var(--dim); flex: 1; line-height: 1.4; }
+  .card .tier {
+    font-size: 10px; margin-top: 4px;
+    padding: 2px 4px; border-radius: 4px;
+    background: #21262d; align-self: flex-start;
+  }
+  .card .tier.t1 { color: #d29922; }
+  .card .tier.t2 { color: #ff9500; font-weight: bold; }
+  button {
+    background: #21262d;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:hover { background: #30363d; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #endturn { display: block; margin: 8px auto; font-weight: bold; }
+  #log {
+    height: 90px;
+    overflow-y: auto;
+    font-size: 12px;
+    color: var(--dim);
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+  }
+  #log div { margin: 2px 0; }
+  .screen { text-align: center; padding: 40px 16px; }
+  .screen h2 { font-size: 22px; margin-bottom: 16px; }
+  .reward-cards { display: flex; gap: 16px; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+  .hidden { display: none !important; }
+  .badge-block { color: #79c0ff; }
+  .badge-energy { color: #d29922; }
+  .small { font-size: 12px; color: var(--dim); }
+</style>
+</head>
+<body>
+<h1>焼け付くほど強くなる基板デッキ</h1>
+
+<div id="app"></div>
+
+<script>
+"use strict";
+
+/* ===================== データ定義 ===================== */
+
+const ELEMENTS = {
+  current: { label: "電流", cls: "current", icon: "⚡" },
+  voltage: { label: "電圧", cls: "voltage", icon: "🔌" },
+  heat:    { label: "熱",   cls: "heat",    icon: "🔥" },
+};
+
+// カード原型: 8種
+const CARD_DEFS = {
+  resistor:   { id:"resistor",   name:"抵抗",       kind:"attack",  element:"current", cost:1, base:6,
+                desc:(t)=>`電流属性攻撃。${t}ダメージ。` },
+  capacitor:  { id:"capacitor",  name:"コンデンサ", kind:"attack",  element:"voltage", cost:1, base:6,
+                desc:(t)=>`電圧属性攻撃。${t}ダメージ。` },
+  thermistor: { id:"thermistor", name:"サーミスタ", kind:"attack",  element:"heat",    cost:1, base:6,
+                desc:(t)=>`熱属性攻撃。${t}ダメージ。` },
+  shield:     { id:"shield",     name:"基板シールド", kind:"defense", cost:1, base:8,
+                desc:(t)=>`ブロックを${t}獲得。` },
+  coil:       { id:"coil",       name:"コイル",     kind:"support", cost:1,
+                desc:()=>null }, // 個別定義(下)
+  battery:    { id:"battery",    name:"バッテリー", kind:"support", cost:0,
+                desc:()=>null },
+  opamp:      { id:"opamp",      name:"オペアンプ", kind:"support", cost:1,
+                desc:()=>null },
+  fuse:       { id:"fuse",       name:"ヒューズ",   kind:"support", cost:1,
+                desc:()=>null },
+};
+
+// 累計プレイ回数によるティア: 0-2回=Tier0, 3-5回=Tier1(+50%), 6回以上=Tier2(+100%)
+function growthTier(plays) {
+  if (plays >= 6) return 2;
+  if (plays >= 3) return 1;
+  return 0;
+}
+function growthMult(tier) { return [1.0, 1.5, 2.0][tier]; }
+function growthLabel(tier) { return ["", "強化I (+50%)", "強化II (+100%)"][tier]; }
+
+// 敵(故障) 3体: 電流/電圧/熱の3すくみ
+// 耐性=x0.5 弱点=x1.5 無属性=x1.0
+const ENEMY_DEFS = [
+  { id:"short",  name:"短絡",     resist:"current", weak:"voltage", maxHp:38, atkBase:5, atkGrowth:1 },
+  { id:"heat",   name:"過熱",     resist:"heat",    weak:"current", maxHp:46, atkBase:6, atkGrowth:1 },
+  { id:"leak",   name:"絶縁劣化", resist:"voltage", weak:"heat",    maxHp:54, atkBase:7, atkGrowth:1 },
+];
+
+const STARTING_DECK = [
+  "resistor","resistor","resistor",
+  "capacitor","capacitor","capacitor",
+  "shield","shield",
+  "battery","battery",
+];
+
+const REWARD_POOL = ["resistor","capacitor","thermistor","shield","coil","battery","opamp","fuse"];
+
+/* ===================== 実行時状態 ===================== */
+
+let uidSeq = 1;
+function makeInstance(cardId) {
+  return { uid: uidSeq++, cardId, plays: 0 };
+}
+
+let run = null; // {deckInstances, enemyIndex, playerHp, playerMaxHp}
+let battle = null; // 戦闘中の一時状態
+
+function newRun() {
+  run = {
+    deckInstances: STARTING_DECK.map(makeInstance),
+    enemyIndex: 0,
+    playerHp: 60,
+    playerMaxHp: 60,
+    awaitingReward: false,
+  };
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function startBattle() {
+  const def = ENEMY_DEFS[run.enemyIndex];
+  battle = {
+    enemyDef: def,
+    enemyHp: def.maxHp,
+    enemyMaxHp: def.maxHp,
+    playerHp: run.playerHp,
+    playerMaxHp: run.playerMaxHp,
+    energy: 0,
+    maxEnergy: 3,
+    block: 0,
+    turn: 0,
+    drawPile: shuffle(run.deckInstances),
+    hand: [],
+    discardPile: [],
+    opampBuff: 0, // 今ターン中の攻撃ダメージ倍率ボーナス(累積%)
+    log: [],
+    over: null, // "win" | "lose"
+  };
+  addLog(`--- ${def.name} との戦闘開始 ---`);
+  startTurn();
+}
+
+function addLog(msg) {
+  battle.log.push(msg);
+  if (battle.log.length > 60) battle.log.shift();
+}
+
+function enemyIntentDamage() {
+  const def = battle.enemyDef;
+  return def.atkBase + def.atkGrowth * battle.turn;
+}
+
+function drawCard() {
+  if (battle.drawPile.length === 0) {
+    if (battle.discardPile.length === 0) return null;
+    battle.drawPile = shuffle(battle.discardPile);
+    battle.discardPile = [];
+    addLog("山札を再構築した。");
+  }
+  return battle.drawPile.pop();
+}
+
+function startTurn() {
+  battle.turn += 1;
+  battle.block = 0;
+  battle.energy = battle.maxEnergy;
+  battle.opampBuff = 0;
+  // 手札を捨て札に戻してから5枚引く(残り手札は持ち越さない標準ルール)
+  battle.discardPile.push(...battle.hand);
+  battle.hand = [];
+  for (let i = 0; i < 5; i++) {
+    const c = drawCard();
+    if (c) battle.hand.push(c);
+  }
+  addLog(`ターン${battle.turn}。故障の次の一手: ${enemyIntentDamage()}ダメージ。`);
+  render();
+}
+
+function elementMult(element) {
+  const def = battle.enemyDef;
+  if (element === def.resist) return 0.5;
+  if (element === def.weak) return 1.5;
+  return 1.0;
+}
+
+function playCard(uid) {
+  if (battle.over) return;
+  const idx = battle.hand.findIndex(c => c.uid === uid);
+  if (idx === -1) return;
+  const inst = battle.hand[idx];
+  const cdef = CARD_DEFS[inst.cardId];
+  if (cdef.cost > battle.energy) return;
+
+  battle.energy -= cdef.cost;
+  const tier = growthTier(inst.plays);
+  const mult = growthMult(tier);
+
+  if (cdef.kind === "attack") {
+    let dmg = cdef.base * mult;
+    dmg *= elementMult(cdef.element);
+    dmg *= (1 + battle.opampBuff);
+    dmg = Math.round(dmg);
+    battle.enemyHp = Math.max(0, battle.enemyHp - dmg);
+    const em = ELEMENTS[cdef.element];
+    const modLabel = cdef.element === battle.enemyDef.resist ? "(耐性)" :
+                      cdef.element === battle.enemyDef.weak ? "(弱点)" : "";
+    addLog(`${cdef.name}${em.icon} で ${dmg} ダメージ ${modLabel}`);
+    battle.opampBuff = 0; // 単発強化は1回消費
+  } else if (cdef.kind === "defense") {
+    const block = Math.round(cdef.base * mult);
+    battle.block += block;
+    addLog(`${cdef.name} でブロック+${block}`);
+  } else if (cdef.kind === "support") {
+    applySupport(inst.cardId, tier);
+  }
+
+  inst.plays += 1;
+  battle.hand.splice(idx, 1);
+  battle.discardPile.push(inst);
+
+  if (battle.enemyHp <= 0) {
+    winBattle();
+    return;
+  }
+  render();
+}
+
+function applySupport(cardId, tier) {
+  if (cardId === "coil") {
+    const n = tier >= 1 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const c = drawCard();
+      if (c) battle.hand.push(c);
+    }
+    if (tier >= 2) battle.energy += 1;
+    addLog(`コイルで${n}枚ドロー${tier>=2 ? "、エネルギー+1":""}`);
+  } else if (cardId === "battery") {
+    const n = tier >= 2 ? 2 : 1;
+    battle.energy += n;
+    addLog(`バッテリーでエネルギー+${n}`);
+  } else if (cardId === "opamp") {
+    const bonus = tier >= 2 ? 1.0 : tier >= 1 ? 0.75 : 0.5;
+    battle.opampBuff = bonus;
+    addLog(`オペアンプ: 次の攻撃カードのダメージ+${Math.round(bonus*100)}%`);
+  } else if (cardId === "fuse") {
+    const intent = enemyIntentDamage();
+    const extra = tier >= 2 ? 4 : tier >= 1 ? 2 : 0;
+    battle.block += intent + extra;
+    addLog(`ヒューズ: 予告ダメージ分(${intent}) + ${extra} をブロック`);
+  }
+}
+
+function endTurn() {
+  if (battle.over) return;
+  const dmg = enemyIntentDamage();
+  const taken = Math.max(0, dmg - battle.block);
+  battle.playerHp = Math.max(0, battle.playerHp - taken);
+  addLog(`故障の攻撃: ${dmg} - ブロック${battle.block} = ${taken}ダメージ`);
+  if (battle.playerHp <= 0) {
+    loseBattle();
+    return;
+  }
+  startTurn();
+}
+
+function winBattle() {
+  addLog(`${battle.enemyDef.name} を撃破した。`);
+  run.playerHp = battle.playerHp;
+  // デッキ(生存インスタンス)をrunに反映
+  run.deckInstances = [...battle.drawPile, ...battle.hand, ...battle.discardPile];
+  run.awaitingReward = true;
+  battle = null;
+  render();
+}
+
+function loseBattle() {
+  battle.over = "lose";
+  addLog(`基板は焼き切れた…`);
+  render();
+}
+
+function advanceAfterReward() {
+  run.enemyIndex += 1;
+  run.awaitingReward = false;
+  if (run.enemyIndex >= ENEMY_DEFS.length) {
+    render(); // 勝利画面へ
+  } else {
+    startBattle();
+  }
+}
+
+function pickReward(cardId) {
+  run.deckInstances.push(makeInstance(cardId));
+  advanceAfterReward();
+}
+
+function skipReward() {
+  advanceAfterReward();
+}
+
+/* ===================== 描画 ===================== */
+
+const app = document.getElementById("app");
+
+function render() {
+  if (!run) {
+    renderTitle();
+    return;
+  }
+  if (!battle) {
+    if (run.enemyIndex >= ENEMY_DEFS.length) {
+      renderVictory();
+    } else if (run.awaitingReward) {
+      renderReward();
+    }
+    return;
+  }
+  if (battle.over === "lose") {
+    renderGameOver();
+    return;
+  }
+  renderBattle();
+}
+
+function renderTitle() {
+  app.innerHTML = `
+    <div class="screen">
+      <p class="small">電子回路基板の世界。カードは抵抗・コンデンサ・ICなどの部品、敵は短絡や過熱といった「故障」。<br>
+      同じカードを繰り返し出すほど、そのカードは永続的に強くなる。<br>
+      3戦を戦い抜けば1ラン終了。</p>
+      <button id="start">ランを開始</button>
+    </div>
+  `;
+  document.getElementById("start").onclick = () => { newRun(); startBattle(); };
+}
+
+function renderReward() {
+  const choices = shuffle(REWARD_POOL).slice(0, 3);
+  app.innerHTML = `
+    <div class="screen">
+      <h2>戦闘後の獲得: 1枚選んでください</h2>
+      <div class="reward-cards" id="reward-cards"></div>
+      <button id="skip">獲得せずに進む</button>
+    </div>
+  `;
+  const wrap = document.getElementById("reward-cards");
+  choices.forEach(cardId => {
+    const cdef = CARD_DEFS[cardId];
+    const div = document.createElement("div");
+    div.className = "card " + (cdef.kind === "attack" ? "attack " + cdef.element : "");
+    div.innerHTML = cardCoreHtml(cdef, 0, false);
+    div.onclick = () => pickReward(cardId);
+    wrap.appendChild(div);
+  });
+  document.getElementById("skip").onclick = skipReward;
+}
+
+function renderVictory() {
+  app.innerHTML = `
+    <div class="screen">
+      <h2>3体の故障をすべて修理(撃破)した</h2>
+      <p class="small">基板は焼け付きながらも、確かに強くなった。</p>
+      <button id="restart">もう一度遊ぶ</button>
+    </div>
+  `;
+  document.getElementById("restart").onclick = () => { newRun(); startBattle(); };
+}
+
+function renderGameOver() {
+  app.innerHTML = `
+    <div class="screen">
+      <h2>基板は焼き切れた</h2>
+      <p class="small">${battle.enemyDef.name} との戦闘 (${run.enemyIndex+1}/3戦目) で力尽きた。</p>
+      <button id="restart">最初からやり直す</button>
+    </div>
+  `;
+  document.getElementById("restart").onclick = () => { newRun(); startBattle(); };
+}
+
+function supportDesc(cardId, tier) {
+  if (cardId === "coil") {
+    const n = tier >= 1 ? 2 : 1;
+    return `${n}枚ドロー。` + (tier >= 2 ? "エネルギー+1も。" : "");
+  }
+  if (cardId === "battery") {
+    const n = tier >= 2 ? 2 : 1;
+    return `エネルギー+${n}。`;
+  }
+  if (cardId === "opamp") {
+    const bonus = tier >= 2 ? 100 : tier >= 1 ? 75 : 50;
+    return `次の攻撃カードのダメージ+${bonus}%。`;
+  }
+  if (cardId === "fuse") {
+    const extra = tier >= 2 ? 4 : tier >= 1 ? 2 : 0;
+    return `故障の予告ダメージ分+${extra}をブロック(相殺特化)。`;
+  }
+  return "";
+}
+
+function cardCoreHtml(cdef, tier, showTier) {
+  const mult = growthMult(tier);
+  let desc;
+  if (cdef.kind === "attack") {
+    desc = cdef.desc(Math.round(cdef.base * mult));
+  } else if (cdef.kind === "defense") {
+    desc = cdef.desc(Math.round(cdef.base * mult));
+  } else {
+    desc = supportDesc(cdef.id, tier);
+  }
+  const tierHtml = showTier && tier > 0 ? `<div class="tier t${tier}">${growthLabel(tier)}</div>` : "";
+  return `
+    <div class="cost">${cdef.cost}</div>
+    <div class="name">${cdef.name}</div>
+    <div class="desc">${desc}</div>
+    ${tierHtml}
+  `;
+}
+
+function renderBattle() {
+  const b = battle;
+  const def = b.enemyDef;
+  const resistEl = ELEMENTS[def.resist];
+  const weakEl = ELEMENTS[def.weak];
+
+  app.innerHTML = `
+    <div class="panel">
+      <div class="row small">
+        <span>戦闘 ${run.enemyIndex + 1} / 3</span>
+        <span>|</span>
+        <span>ターン ${b.turn}</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row"><strong>${def.name}</strong>
+        <div class="enemy-profile">
+          <span class="tag ${resistEl.cls}">耐性: ${resistEl.icon}${resistEl.label}</span>
+          <span class="tag ${weakEl.cls}">弱点: ${weakEl.icon}${weakEl.label}</span>
+        </div>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <div class="bar-wrap"><div class="bar-fill hp-enemy" style="width:${(b.enemyHp/b.enemyMaxHp*100)}%"></div>
+          <div class="bar-label">${b.enemyHp} / ${b.enemyMaxHp}</div>
+        </div>
+        <div class="intent">次の一手: 💥 ${enemyIntentDamage()}</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <div class="bar-wrap"><div class="bar-fill hp-player" style="width:${(b.playerHp/b.playerMaxHp*100)}%"></div>
+          <div class="bar-label">HP ${b.playerHp} / ${b.playerMaxHp}</div>
+        </div>
+        <span class="badge-energy">⚡エネルギー ${b.energy}/${b.maxEnergy}</span>
+        <span class="badge-block">🛡ブロック ${b.block}</span>
+      </div>
+    </div>
+
+    <div id="hand"></div>
+    <button id="endturn">ターン終了</button>
+
+    <div class="panel small">
+      <div>山札 ${b.drawPile.length} / 捨札 ${b.discardPile.length}</div>
+    </div>
+    <div id="log"></div>
+  `;
+
+  const hand = document.getElementById("hand");
+  b.hand.forEach(inst => {
+    const cdef = CARD_DEFS[inst.cardId];
+    const tier = growthTier(inst.plays);
+    const affordable = cdef.cost <= b.energy;
+    const div = document.createElement("div");
+    div.className = "card " + (cdef.kind === "attack" ? "attack " + cdef.element : "") + (affordable ? "" : " disabled");
+    div.innerHTML = cardCoreHtml(cdef, tier, true) + `<div class="small">使用回数: ${inst.plays}</div>`;
+    if (affordable) div.onclick = () => playCard(inst.uid);
+    hand.appendChild(div);
+  });
+
+  document.getElementById("endturn").onclick = endTurn;
+
+  const logDiv = document.getElementById("log");
+  logDiv.innerHTML = b.log.map(l => `<div>${l}</div>`).join("");
+  logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+render();
+</script>
+</body>
+</html>
